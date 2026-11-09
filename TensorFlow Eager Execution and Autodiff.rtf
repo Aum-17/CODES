@@ -1,0 +1,319 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2908
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 HelveticaNeue-Bold;\f1\fnil\fcharset0 HelveticaNeue;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\deftab560
+\pard\pardeftab560\pardirnatural\partightenfactor0
+
+\f0\b\fs40 \cf0 \
+\pard\pardeftab560\partightenfactor0
+\cf0 \
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+
+\f1\b0\fs26 \cf0 EXP 1\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 import tensorflow as tf\
+a = tf.constant([[1.,2.],[3.,4.]]); b = tf.ones((2,2))\
+print(tf.add(a,b), tf.matmul(a,b), a*b)           # computation\
+print(tf.reshape(a,(4,)), a[0], tf.transpose(a))  # manipulation\
+print(tf.random.normal((2,3)), tf.zeros((2,2)), tf.cast(a, tf.int32))\
+v = tf.Variable(3.0)\
+with tf.GradientTape() as t:                      # eager + autodiff\
+    y = v**2\
+print("dy/dv =", t.gradient(y, v).numpy())       # 6.0\
+@tf.function                                     # graph mode\
+def f(x, y): return tf.matmul(x, y) + 1\
+print(f(a, b))\
+print(tf.executing_eagerly())\
+print(tf.autograph.to_code(f.python_function)[:200])\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 2\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 import pandas as pd, numpy as np\
+df = pd.DataFrame(\{"age":[25,np.nan,35,40],"salary":[30000,50000,np.nan,90000],\
+                   "city":["Mumbai","Pune",None,"Pune"],\
+                   "caption":["A Cat!","a DOG.","Bird  ","a cat"]\})\
+df["age"].fillna(df["age"].mean(), inplace=True)\
+df["salary"].fillna(df["salary"].median(), inplace=True)\
+df["city"].fillna(df["city"].mode()[0], inplace=True)\
+df["salary_norm"] = (df.salary-df.salary.min())/(df.salary.max()-df.salary.min())\
+df["age_z"] = (df.age-df.age.mean())/df.age.std()\
+df = pd.get_dummies(df, columns=["city"])                      # one-hot\
+df["caption"] = df.caption.str.lower().str.replace(r"[^a-z\\s]","",regex=True).str.strip()\
+print(df)\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 3\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 import seaborn as sns, matplotlib.pyplot as plt\
+df = sns.load_dataset("iris")\
+fig, ax = plt.subplots(1,3, figsize=(16,4))\
+ax[0].hist(df.sepal_length, bins=15); ax[0].set_title("Histogram")\
+sns.scatterplot(data=df, x="sepal_length", y="petal_length", hue="species", ax=ax[1])\
+sns.heatmap(df.drop(columns="species").corr(), annot=True, cmap="coolwarm", ax=ax[2])\
+plt.tight_layout(); plt.show()\
+\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 4\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 from gensim.models import Word2Vec\
+import numpy as np, faiss\
+corpus = [s.lower().split() for s in [\
+ "king rules the kingdom","queen rules the kingdom","man walks in city","woman walks in city",\
+ "dog chases cat","cat drinks milk","dog drinks water","car is a vehicle","bus is a vehicle"]]\
+m = Word2Vec(corpus, vector_size=50, window=3, min_count=1, sg=1, epochs=200)\
+words = list(m.wv.index_to_key)\
+vecs = np.array([m.wv[w] for w in words]).astype("float32")\
+faiss.normalize_L2(vecs)\
+index = faiss.IndexFlatIP(50); index.add(vecs)          # inner product = cosine\
+q = vecs[words.index("king")].reshape(1,-1)\
+D, I = index.search(q, 4)\
+print([(words[i], round(float(d),2)) for i,d in zip(I[0],D[0])])\
+print(m.wv.most_similar(positive=["king","woman"], negative=["man"], topn=2))\
+\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 5\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 import tensorflow as tf, numpy as np, matplotlib.pyplot as plt\
+from tensorflow.keras import layers\
+T=200; beta=np.linspace(1e-4,0.02,T).astype("float32")\
+alpha=1-beta; abar=np.cumprod(alpha)\
+(x,_),_=tf.keras.datasets.mnist.load_data()\
+x=(x[...,None].astype("float32")/127.5-1)\
+\
+def build():\
+    img=layers.Input((28,28,1)); t=layers.Input((1,))\
+    te=layers.Dense(28*28)(layers.Dense(64,activation="relu")(t/T))\
+    te=layers.Reshape((28,28,1))(te)\
+    h=layers.Concatenate()([img,te])\
+    for f in (32,64,64,32): h=layers.Conv2D(f,3,padding="same",activation="relu")(h)\
+    return tf.keras.Model([img,t],layers.Conv2D(1,3,padding="same")(h))\
+model=build(); opt=tf.keras.optimizers.Adam(1e-3)\
+\
+@tf.function\
+def step(x0):\
+    b=tf.shape(x0)[0]; t=tf.random.uniform((b,),0,T,tf.int32)\
+    eps=tf.random.normal(tf.shape(x0)); ab=tf.reshape(tf.gather(abar,t),(-1,1,1,1))\
+    xt=tf.sqrt(ab)*x0+tf.sqrt(1-ab)*eps\
+    with tf.GradientTape() as g:\
+        loss=tf.reduce_mean((eps-model([xt,tf.cast(t[:,None],tf.float32)]))**2)\
+    opt.apply_gradients(zip(g.gradient(loss,model.trainable_variables),model.trainable_variables))\
+    return loss\
+ds=tf.data.Dataset.from_tensor_slices(x).shuffle(60000).batch(128)\
+for ep in range(3):\
+    for xb in ds: l=step(xb)\
+    print(ep,float(l))\
+\
+# ---- Inference: reverse diffusion ----\
+xt=tf.random.normal((8,28,28,1))\
+for t in reversed(range(T)):\
+    eps=model([xt,tf.fill((8,1),float(t))])\
+    xt=(xt-beta[t]/np.sqrt(1-abar[t])*eps)/np.sqrt(alpha[t])\
+    if t>0: xt+=np.sqrt(beta[t])*tf.random.normal(xt.shape)\
+fig,ax=plt.subplots(1,8,figsize=(16,2))\
+for i in range(8): ax[i].imshow(xt[i,...,0],cmap="gray"); ax[i].axis("off")\
+plt.show()\
+\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 6\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 import torch\
+from diffusers import StableDiffusionPipeline\
+from torchmetrics.multimodal.clip_score import CLIPScore\
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5",\
+        torch_dtype=torch.float16).to("cuda")\
+prompts = ["an astronaut riding a horse","a cozy cabin in snowy mountains","a red sports car"]\
+imgs = [pipe(p, num_inference_steps=25, guidance_scale=7.5).images[0] for p in prompts]\
+for i,im in enumerate(imgs): im.save(f"out\{i\}.png")\
+\
+import numpy as np\
+clip = CLIPScore(model_name_or_path="openai/clip-vit-base-patch16")\
+for im,p in zip(imgs,prompts):\
+    t = torch.tensor(np.array(im)).permute(2,0,1)\
+    print(p, float(clip(t,p)))\
+\
+# FID needs a real image set (use >=2 batches in practice)\
+from torchmetrics.image.fid import FrechetInceptionDistance\
+fid = FrechetInceptionDistance(feature=64)\
+to_t = lambda L: torch.stack([torch.tensor(np.array(i.resize((299,299)))).permute(2,0,1) for i in L])\
+fid.update(to_t(imgs), real=True)     # replace with real dataset images\
+fid.update(to_t(imgs[::-1]), real=False)\
+print("FID:", float(fid.compute()))\
+\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 7\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 import torch, math\
+from datasets import load_dataset\
+from transformers import (AutoTokenizer, AutoModelForCausalLM, Trainer,\
+        TrainingArguments, DataCollatorForLanguageModeling)\
+from peft import LoraConfig, get_peft_model\
+tok = AutoTokenizer.from_pretrained("distilgpt2"); tok.pad_token = tok.eos_token\
+model = AutoModelForCausalLM.from_pretrained("distilgpt2")\
+model = get_peft_model(model, LoraConfig(r=8, lora_alpha=16, lora_dropout=0.05,\
+        target_modules=["c_attn"], task_type="CAUSAL_LM"))\
+model.print_trainable_parameters()\
+ds = load_dataset("wikitext","wikitext-2-raw-v1")\
+tokz = lambda b: tok(b["text"], truncation=True, max_length=128)\
+tr = ds["train"].select(range(2000)).map(tokz, batched=True, remove_columns=["text"])\
+va = ds["validation"].select(range(300)).map(tokz, batched=True, remove_columns=["text"])\
+tr = tr.filter(lambda x: len(x["input_ids"])>5); va = va.filter(lambda x: len(x["input_ids"])>5)\
+args = TrainingArguments("lora_out", per_device_train_batch_size=8, num_train_epochs=1,\
+        learning_rate=2e-4, logging_steps=50, report_to="none", fp16=torch.cuda.is_available())\
+trainer = Trainer(model=model, args=args, train_dataset=tr, eval_dataset=va,\
+        data_collator=DataCollatorForLanguageModeling(tok, mlm=False))\
+trainer.train()\
+print("Perplexity:", math.exp(trainer.evaluate()["eval_loss"]))\
+inp = tok("The history of science", return_tensors="pt").to(model.device)\
+print(tok.decode(model.generate(**inp, max_new_tokens=50, do_sample=True, top_p=0.9)[0]))\
+\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 8\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 from transformers import pipeline\
+import evaluate\
+text = """The Indian space agency launched a new satellite on Monday to improve weather forecasting.\
+The satellite carries advanced sensors and will help predict cyclones more accurately."""\
+ref = "India launched a weather satellite to better predict cyclones."\
+summ = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")\
+out = summ("Summarize: "+text, max_length=30, min_length=8)[0]["summary_text"]\
+print("Summary:", out)\
+print(evaluate.load("rouge").compute(predictions=[out], references=[ref]))\
+print(evaluate.load("bleu").compute(predictions=[out], references=[[ref]]))\
+\
+qa = pipeline("question-answering", model="distilbert-base-cased-distilled-squad")\
+print(qa(question="What will the satellite predict?", context=text))\
+# few-shot prompt example with an instruction model\
+gen = pipeline("text2text-generation", model="google/flan-t5-base")\
+print(gen("Q: Capital of France? A: Paris\\nQ: Capital of Japan? A:")[0]["generated_text"])\
+\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 9\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 from sentence_transformers import SentenceTransformer\
+import faiss, numpy as np\
+from transformers import pipeline\
+docs = ["Employees get 24 days of paid leave per year.",\
+        "The office is closed on national holidays.",\
+        "Remote work is allowed two days a week.",\
+        "Health insurance covers employees and dependents."]\
+emb = SentenceTransformer("all-MiniLM-L6-v2")\
+E = emb.encode(docs, normalize_embeddings=True).astype("float32")\
+idx = faiss.IndexFlatIP(E.shape[1]); idx.add(E)\
+llm = pipeline("text2text-generation", model="google/flan-t5-base")\
+\
+def rag(q, k=2):\
+    qv = emb.encode([q], normalize_embeddings=True).astype("float32")\
+    _, I = idx.search(qv, k)\
+    ctx = " ".join(docs[i] for i in I[0])\
+    return llm(f"Answer using the context.\\nContext: \{ctx\}\\nQuestion: \{q\}\\nAnswer:",\
+               max_new_tokens=50)[0]["generated_text"]\
+print(rag("How many days of leave do employees get?"))\
+print(rag("Can I work from home?"))\
+\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 10\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 import torch, time, os\
+from transformers import AutoModelForSequenceClassification, AutoTokenizer\
+import torch.nn.utils.prune as prune\
+name="distilbert-base-uncased-finetuned-sst-2-english"\
+tok=AutoTokenizer.from_pretrained(name)\
+model=AutoModelForSequenceClassification.from_pretrained(name).eval()\
+inp=tok(["This movie was great!"]*16, return_tensors="pt", padding=True)\
+\
+def size(m): torch.save(m.state_dict(),"t.p"); s=os.path.getsize("t.p")/1e6; os.remove("t.p"); return s\
+def speed(m):\
+    with torch.no_grad():\
+        m(**inp); t=time.time()\
+        for _ in range(20): m(**inp)\
+    return (time.time()-t)/20\
+\
+q=torch.quantization.quantize_dynamic(model,\{torch.nn.Linear\},dtype=torch.qint8)\
+print(f"FP32: \{size(model):.0f\}MB \{speed(model)*1000:.0f\}ms | INT8: \{size(q):.0f\}MB \{speed(q)*1000:.0f\}ms")\
+\
+# Pruning: 30% smallest weights in each Linear layer\
+for _,mod in model.named_modules():\
+    if isinstance(mod,torch.nn.Linear): prune.l1_unstructured(mod,"weight",amount=0.3); prune.remove(mod,"weight")\
+z=sum((p==0).sum().item() for p in model.parameters()); n=sum(p.numel() for p in model.parameters())\
+print(f"Sparsity: \{100*z/n:.1f\}%")\
+\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 11\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 from transformers import pipeline\
+fill = pipeline("fill-mask", model="distilbert-base-uncased")\
+jobs = ["doctor","nurse","engineer","teacher","ceo","secretary"]\
+def bias(job):\
+    r = fill(f"the \{job\} said that [MASK] was very busy.", targets=["he","she"])\
+    s = \{x["token_str"]: x["score"] for x in r\}\
+    return s.get("he",0), s.get("she",0)\
+print("BEFORE mitigation")\
+gaps=[]\
+for j in jobs:\
+    h,s = bias(j); gaps.append(abs(h-s)); print(f"\{j:10s\} he=\{h:.2f\} she=\{s:.2f\} gap=\{abs(h-s):.2f\}")\
+print("Mean gap:", sum(gaps)/len(gaps))\
+\
+# Mitigation: output filtering -> neutralise gendered pronoun with neutral rewrite\
+def mitigated(job):\
+    h,s = bias(job); tot=h+s\
+    return 0.5, 0.5     # equalised: filter replaces gendered choice with "they"/balanced sampling\
+print("AFTER mitigation (balanced output)")\
+print("Mean gap:", sum(abs(a-b) for a,b in map(mitigated,jobs))/len(jobs))\
+# Text-generation filter example\
+BLOCK = ["stupid","dumb"]\
+def filt(t): return "[FILTERED]" if any(w in t.lower() for w in BLOCK) else t\
+print(filt("She is a dumb nurse"), "|", filt("She is a nurse"))\
+\
+\
+\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf0 EXP 12\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 import random, matplotlib.pyplot as plt\
+random.seed(1)\
+class Agent:\
+    def __init__(s, name, role, limit): s.name, s.role, s.limit, s.offer = name, role, limit, None\
+    def decide(s, other_offer, rnd):\
+        # buyer raises bid, seller lowers ask, each toward own limit\
+        if s.role=="buyer":\
+            if other_offer is not None and other_offer <= s.limit: return other_offer, True\
+            s.offer = (s.offer or 20)+random.randint(3,8); s.offer=min(s.offer,s.limit)\
+        else:\
+            if other_offer is not None and other_offer >= s.limit: return other_offer, True\
+            s.offer = (s.offer or 100)-random.randint(3,8); s.offer=max(s.offer,s.limit)\
+        return s.offer, False\
+buyer, seller = Agent("Buyer","buyer",70), Agent("Seller","seller",50)\
+hist=[]; b_off=s_off=None\
+for rnd in range(1,21):\
+    b_off,done = buyer.decide(s_off,rnd)\
+    if done: print(f"Round \{rnd\}: Seller accepts at \{b_off\}"); break\
+    s_off,done = seller.decide(b_off,rnd)\
+    hist.append((rnd,b_off,s_off))\
+    print(f"Round \{rnd\}: buyer bids \{b_off\}, seller asks \{s_off\}")\
+    if done: print(f"Round \{rnd\}: Buyer accepts at \{s_off\}"); break\
+r,b,s = zip(*hist)\
+plt.plot(r,b,label="Buyer"); plt.plot(r,s,label="Seller"); plt.legend()\
+plt.xlabel("Round"); plt.ylabel("Price"); plt.title("Negotiation convergence"); plt.show()\
+\
+}
