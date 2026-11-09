@@ -1,0 +1,306 @@
+# ============ EXPERIMENT 1: Basic Image Handling and Processing ============
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+img = cv2.imread('img.jpg')
+print("Shape:", img.shape)
+print("Size:", img.size)
+print("Data type:", img.dtype)
+rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+resized = cv2.resize(img, (300, 200))
+cropped = img[50:200, 100:300]
+rotated = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+flipped = cv2.flip(img, 1)
+ret, global_th = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+ret, otsu_th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+adaptive_th = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+avg_blur = cv2.blur(img, (5, 5))
+gauss_blur = cv2.GaussianBlur(img, (5, 5), 0)
+median_blur = cv2.medianBlur(img, 5)
+equalized = cv2.equalizeHist(gray)
+hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
+cv2.imwrite('gray_output.jpg', gray)
+plt.figure(figsize=(15, 9))
+plt.subplot(3, 4, 1); plt.imshow(rgb); plt.title('RGB')
+plt.subplot(3, 4, 2); plt.imshow(gray, cmap='gray'); plt.title('Gray')
+plt.subplot(3, 4, 3); plt.imshow(hsv); plt.title('HSV')
+plt.subplot(3, 4, 4); plt.imshow(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)); plt.title('Cropped')
+plt.subplot(3, 4, 5); plt.imshow(global_th, cmap='gray'); plt.title('Global Threshold')
+plt.subplot(3, 4, 6); plt.imshow(otsu_th, cmap='gray'); plt.title('Otsu')
+plt.subplot(3, 4, 7); plt.imshow(adaptive_th, cmap='gray'); plt.title('Adaptive')
+plt.subplot(3, 4, 8); plt.imshow(cv2.cvtColor(avg_blur, cv2.COLOR_BGR2RGB)); plt.title('Average Blur')
+plt.subplot(3, 4, 9); plt.imshow(cv2.cvtColor(gauss_blur, cv2.COLOR_BGR2RGB)); plt.title('Gaussian Blur')
+plt.subplot(3, 4, 10); plt.imshow(cv2.cvtColor(median_blur, cv2.COLOR_BGR2RGB)); plt.title('Median Blur')
+plt.subplot(3, 4, 11); plt.imshow(equalized, cmap='gray'); plt.title('Equalized')
+plt.subplot(3, 4, 12); plt.plot(hist); plt.title('Histogram')
+plt.tight_layout(); plt.show()
+
+  
+# ============ EXPERIMENT 2: Geometric Transformations ============
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+img = cv2.imread('img.jpg')
+h, w = img.shape[:2]
+M_trans = np.float32([[1, 0, 100], [0, 1, 50]])
+translated = cv2.warpAffine(img, M_trans, (w, h))
+M_rot = cv2.getRotationMatrix2D((w // 2, h // 2), 45, 1)
+rotated = cv2.warpAffine(img, M_rot, (w, h))
+scaled = cv2.resize(img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR)
+flipped = cv2.flip(img, 1)
+M_shear = np.float32([[1, 0.3, 0], [0, 1, 0]])
+sheared = cv2.warpAffine(img, M_shear, (int(w * 1.3), h))
+src_pts = np.float32([[50, 50], [200, 50], [50, 200]])
+dst_pts = np.float32([[10, 100], [200, 50], [100, 250]])
+M_affine = cv2.getAffineTransform(src_pts, dst_pts)
+affine = cv2.warpAffine(img, M_affine, (w, h))
+print("Affine matrix:\n", M_affine)
+names = ['Original', 'Translation', 'Rotation', 'Scaling', 'Flip', 'Shear', 'Affine']
+results = [img, translated, rotated, scaled, flipped, sheared, affine]
+plt.figure(figsize=(16, 8))
+for i in range(len(results)):
+    plt.subplot(2, 4, i + 1)
+    plt.imshow(cv2.cvtColor(results[i], cv2.COLOR_BGR2RGB))
+    plt.title(names[i])
+plt.tight_layout(); plt.show()
+
+  
+# ============ EXPERIMENT 3: Homography Matrix ============
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+img1 = cv2.imread('img1.jpg', 0)
+img2 = cv2.imread('img2.jpg', 0)
+sift = cv2.SIFT_create()
+kp1, des1 = sift.detectAndCompute(img1, None)
+kp2, des2 = sift.detectAndCompute(img2, None)
+bf = cv2.BFMatcher()
+matches = bf.knnMatch(des1, des2, k=2)
+good = []
+for m, n in matches:
+    if m.distance < 0.75 * n.distance:
+        good.append(m)
+print("Good matches:", len(good))
+src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+print("Homography matrix:\n", H)
+print("Inlier ratio:", mask.sum() / len(mask))
+projected = cv2.perspectiveTransform(src_pts, H)
+error = np.linalg.norm(projected - dst_pts, axis=2).mean()
+print("Mean reprojection error:", error)
+warped = cv2.warpPerspective(img1, H, (img2.shape[1], img2.shape[0]))
+plt.figure(figsize=(14, 5))
+plt.subplot(1, 3, 1); plt.imshow(img1, cmap='gray'); plt.title('Image 1')
+plt.subplot(1, 3, 2); plt.imshow(img2, cmap='gray'); plt.title('Image 2')
+plt.subplot(1, 3, 3); plt.imshow(warped, cmap='gray'); plt.title('Image 1 warped to Image 2')
+plt.show()
+
+  
+# ============ EXPERIMENT 4: Perspective Transformation ============
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+img = cv2.imread('doc.jpg')
+src_pts = np.float32([[120, 80], [520, 60], [560, 420], [90, 450]])
+width, height = 400, 500
+dst_pts = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
+M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+print("Perspective matrix:\n", M)
+output = cv2.warpPerspective(img, M, (width, height))
+plt.figure(figsize=(10, 5))
+plt.subplot(1, 2, 1); plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)); plt.title('Original')
+plt.subplot(1, 2, 2); plt.imshow(cv2.cvtColor(output, cv2.COLOR_BGR2RGB)); plt.title('Top-down View')
+plt.show()
+# ============ EXPERIMENT 5: Camera Calibration ============
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import glob
+pattern = (9, 6)
+square_size = 1.0
+objp = np.zeros((pattern[0] * pattern[1], 3), np.float32)
+objp[:, :2] = np.mgrid[0:pattern[0], 0:pattern[1]].T.reshape(-1, 2) * square_size
+objpoints = []
+imgpoints = []
+criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+images = glob.glob('calib/*.jpg')
+for fname in images:
+    img = cv2.imread(fname)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    found, corners = cv2.findChessboardCorners(gray, pattern, None)
+    if found:
+        corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+        objpoints.append(objp)
+        imgpoints.append(corners2)
+print("Images used:", len(objpoints), "of", len(images))
+ret, K, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+print("Camera matrix:\n", K)
+print("Distortion coefficients:\n", dist)
+total_error = 0
+for i in range(len(objpoints)):
+    projected, _ = cv2.projectPoints(objpoints[i], rvecs[i], tvecs[i], K, dist)
+    total_error += cv2.norm(imgpoints[i], projected, cv2.NORM_L2) / len(projected)
+print("Mean reprojection error:", total_error / len(objpoints))
+test = cv2.imread(images[0])
+undistorted = cv2.undistort(test, K, dist)
+plt.figure(figsize=(10, 5))
+plt.subplot(1, 2, 1); plt.imshow(cv2.cvtColor(test, cv2.COLOR_BGR2RGB)); plt.title('Distorted')
+plt.subplot(1, 2, 2); plt.imshow(cv2.cvtColor(undistorted, cv2.COLOR_BGR2RGB)); plt.title('Undistorted')
+plt.show()
+
+  
+# ============ EXPERIMENT 6: Fundamental Matrix ============
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+img1 = cv2.imread('left.jpg', 0)
+img2 = cv2.imread('right.jpg', 0)
+sift = cv2.SIFT_create()
+kp1, des1 = sift.detectAndCompute(img1, None)
+kp2, des2 = sift.detectAndCompute(img2, None)
+matches = cv2.BFMatcher().knnMatch(des1, des2, k=2)
+pts1 = []
+pts2 = []
+for m, n in matches:
+    if m.distance < 0.75 * n.distance:
+        pts1.append(kp1[m.queryIdx].pt)
+        pts2.append(kp2[m.trainIdx].pt)
+pts1 = np.int32(pts1)
+pts2 = np.int32(pts2)
+F, mask = cv2.findFundamentalMat(pts1, pts2, cv2.FM_RANSAC)
+print("Fundamental matrix:\n", F)
+pts1 = pts1[mask.ravel() == 1]
+pts2 = pts2[mask.ravel() == 1]
+print("Inliers:", len(pts1))
+def draw_epilines(im1, im2, lines, p1, p2):
+    h, w = im1.shape
+    im1 = cv2.cvtColor(im1, cv2.COLOR_GRAY2BGR)
+    im2 = cv2.cvtColor(im2, cv2.COLOR_GRAY2BGR)
+    for line, a, b in zip(lines, p1, p2):
+        color = tuple(np.random.randint(0, 255, 3).tolist())
+        x0, y0 = 0, int(-line[2] / line[1])
+        x1, y1 = w, int(-(line[2] + line[0] * w) / line[1])
+        im1 = cv2.line(im1, (x0, y0), (x1, y1), color, 1)
+        im1 = cv2.circle(im1, tuple(int(v) for v in a), 5, color, -1)
+        im2 = cv2.circle(im2, tuple(int(v) for v in b), 5, color, -1)
+    return im1, im2
+lines1 = cv2.computeCorrespondEpilines(pts2.reshape(-1, 1, 2), 2, F).reshape(-1, 3)
+left_img, _ = draw_epilines(img1, img2, lines1[:10], pts1[:10], pts2[:10])
+lines2 = cv2.computeCorrespondEpilines(pts1.reshape(-1, 1, 2), 1, F).reshape(-1, 3)
+right_img, _ = draw_epilines(img2, img1, lines2[:10], pts2[:10], pts1[:10])
+plt.figure(figsize=(14, 6))
+plt.subplot(1, 2, 1); plt.imshow(left_img); plt.title('Epipolar lines in left image')
+plt.subplot(1, 2, 2); plt.imshow(right_img); plt.title('Epipolar lines in right image')
+plt.show()
+
+  
+# ============ EXPERIMENT 7: Edge, Line and Corner Detection ============
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+img = cv2.imread('road.jpg')
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+sobel = cv2.convertScaleAbs(cv2.magnitude(sobel_x, sobel_y))
+laplacian = cv2.convertScaleAbs(cv2.Laplacian(gray, cv2.CV_64F))
+blur = cv2.GaussianBlur(gray, (5, 5), 0)
+canny = cv2.Canny(blur, 50, 150)
+lines = cv2.HoughLinesP(canny, 1, np.pi / 180, threshold=80, minLineLength=50, maxLineGap=10)
+line_img = img.copy()
+if lines is not None:
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        cv2.line(line_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+harris = cv2.cornerHarris(np.float32(gray), 2, 3, 0.04)
+harris_img = img.copy()
+harris_img[harris > 0.01 * harris.max()] = [0, 0, 255]
+corners = np.int32(cv2.goodFeaturesToTrack(gray, 50, 0.01, 10))
+shi_img = img.copy()
+for c in corners:
+    x, y = c.ravel()
+    cv2.circle(shi_img, (int(x), int(y)), 4, (0, 255, 0), -1)
+plt.figure(figsize=(15, 8))
+plt.subplot(2, 4, 1); plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)); plt.title('Original')
+plt.subplot(2, 4, 2); plt.imshow(sobel, cmap='gray'); plt.title('Sobel')
+plt.subplot(2, 4, 3); plt.imshow(laplacian, cmap='gray'); plt.title('Laplacian')
+plt.subplot(2, 4, 4); plt.imshow(canny, cmap='gray'); plt.title('Canny')
+plt.subplot(2, 4, 5); plt.imshow(cv2.cvtColor(line_img, cv2.COLOR_BGR2RGB)); plt.title('Hough Lines')
+plt.subplot(2, 4, 6); plt.imshow(cv2.cvtColor(harris_img, cv2.COLOR_BGR2RGB)); plt.title('Harris Corners')
+plt.subplot(2, 4, 7); plt.imshow(cv2.cvtColor(shi_img, cv2.COLOR_BGR2RGB)); plt.title('Shi-Tomasi Corners')
+plt.tight_layout(); plt.show()
+
+  
+# ============ EXPERIMENT 8: SIFT Feature Descriptor ============
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+img1 = cv2.imread('obj.jpg', 0)
+img2 = cv2.imread('scene.jpg', 0)
+sift = cv2.SIFT_create()
+kp1, des1 = sift.detectAndCompute(img1, None)
+kp2, des2 = sift.detectAndCompute(img2, None)
+print("Keypoints in image 1:", len(kp1))
+print("Descriptor shape:", des1.shape)
+kp_img = cv2.drawKeypoints(img1, kp1, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+bf = cv2.BFMatcher()
+bf_matches = bf.knnMatch(des1, des2, k=2)
+good_bf = []
+for m, n in bf_matches:
+    if m.distance < 0.75 * n.distance:
+        good_bf.append(m)
+bf_result = cv2.drawMatches(img1, kp1, img2, kp2, good_bf, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+index_params = dict(algorithm=1, trees=5)
+search_params = dict(checks=50)
+flann = cv2.FlannBasedMatcher(index_params, search_params)
+flann_matches = flann.knnMatch(des1, des2, k=2)
+good_flann = []
+for m, n in flann_matches:
+    if m.distance < 0.75 * n.distance:
+        good_flann.append(m)
+flann_result = cv2.drawMatches(img1, kp1, img2, kp2, good_flann, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+print("BF good matches:", len(good_bf))
+print("FLANN good matches:", len(good_flann))
+plt.figure(figsize=(14, 10))
+plt.subplot(3, 1, 1); plt.imshow(kp_img); plt.title('SIFT Keypoints')
+plt.subplot(3, 1, 2); plt.imshow(bf_result); plt.title('Brute-Force Matches')
+plt.subplot(3, 1, 3); plt.imshow(flann_result); plt.title('FLANN Matches')
+plt.tight_layout(); plt.show()
+
+  
+# ============ EXPERIMENT 9: SURF and HOG Feature Descriptors ============
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from skimage.feature import hog
+from skimage import exposure
+img = cv2.imread('people.jpg')
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+try:
+    surf = cv2.xfeatures2d.SURF_create(400)
+    kp, des = surf.detectAndCompute(gray, None)
+    name = 'SURF'
+except Exception:
+    orb = cv2.ORB_create(500)
+    kp, des = orb.detectAndCompute(gray, None)
+    name = 'ORB (SURF not available)'
+print(name, "keypoints:", len(kp))
+kp_img = cv2.drawKeypoints(img, kp, None, color=(0, 255, 0))
+features, hog_img = hog(gray, orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2), visualize=True)
+hog_img = exposure.rescale_intensity(hog_img, in_range=(0, 10))
+print("HOG feature length:", len(features))
+hog_cv = cv2.HOGDescriptor()
+hog_cv.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+rects, weights = hog_cv.detectMultiScale(img, winStride=(8, 8), padding=(8, 8), scale=1.05)
+people_img = img.copy()
+for (x, y, w, h) in rects:
+    cv2.rectangle(people_img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+print("People detected:", len(rects))
+plt.figure(figsize=(15, 5))
+plt.subplot(1, 3, 1); plt.imshow(cv2.cvtColor(kp_img, cv2.COLOR_BGR2RGB)); plt.title(name + ' Keypoints')
+plt.subplot(1, 3, 2); plt.imshow(hog_img, cmap='gray'); plt.title('HOG Visualization')
+plt.subplot(1, 3, 3); plt.imshow(cv2.cvtColor(people_img, cv2.COLOR_BGR2RGB)); plt.title('HOG + SVM People Detection')
+plt.show()
